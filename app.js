@@ -1,8 +1,17 @@
 const STORAGE_KEYS = {
-  apiBase: "hl_apiBase",
   mine: "hl_mineHighlights_v2",
-  activeTool: "hl_activeTool_v1"
+  activeTool: "hl_activeTool_v1",
+  deviceKey: "hl_deviceKey_v1"
 };
+
+function getDeviceKey() {
+  let k = localStorage.getItem(STORAGE_KEYS.deviceKey);
+  if (!k) {
+    k = (crypto?.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2) + Date.now());
+    localStorage.setItem(STORAGE_KEYS.deviceKey, k);
+  }
+  return k;
+}
 
 let TOOLS = []; // from highlights.json
 let HEAT = { maxCountForFull: 6, minAlpha: 0.10, maxAlpha: 0.55 };
@@ -428,7 +437,7 @@ async function handleSelectionAction() {
     return;
   }
 
-  const h = { start, end, quote: sel.quote, colorId };
+const h = { start, end, quote: sel.quote, colorId, deviceKey: getDeviceKey() };
 
   // Save locally
   addMineHighlight(h);
