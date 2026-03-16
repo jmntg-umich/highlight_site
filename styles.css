@@ -352,3 +352,25 @@ pre.text-layer{
   background: rgba(17,24,39,0.07);
   color: rgba(17,24,39,0.92);
 }
+
+/* Force wrapping on the actual rendered text */
+#textLayer{
+  white-space: pre-wrap !important;
+  overflow-wrap: anywhere !important;
+  word-break: normal !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+}
+
+/* Ensure the grid cell can shrink and wrap */
+.content-wrap{
+  max-width: 100%;
+  min-width: 0;
+}
+
+/* Both layers must be allowed to shrink within the grid */
+.text-layer,
+.hl-layer{
+  min-width: 0 !important;
+  max-width: 100% !important;
+}
