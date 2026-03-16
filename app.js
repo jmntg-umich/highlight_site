@@ -402,25 +402,26 @@ function clearMineRange(start, end) {
 }
 
 async function handleSelectionAction() {
-    console.log("handleSelectionAction fired", activeToolId);
-
   const sel = selectionToOffsets();
   if (!sel) return;
 
   if (!activeToolId) { toast("Select a tool first."); return; }
 
-  if (activeToolId === "clear") {
-    const r = clearMineRange(sel.start, sel.end);
+  const start = sel.start;
+  const end = sel.end;
+  const colorId = activeToolId;
+
+  // CLEAR tool: remove only selected portion from *mine*
+  if (colorId === "clear") {
+    const r = clearMineRange(start, end);
     window.getSelection()?.removeAllRanges();
     render();
     const total = r.deleted + r.trimmed + r.split;
     toast(total ? "Cleared selected text from your highlights." : "No local highlights to clear there.");
     return;
   }
-  // ---- Apply highlight (non-clear) ----
-  const start = sel.start, end = sel.end, colorId = activeToolId;
 
-  // Disallow highlighting any text that overlaps something you've already highlighted
+  // Block any overlap with existing mine highlights
   if (overlapsAnyMine(start, end)) {
     window.getSelection()?.removeAllRanges();
     toast("That selection overlaps text you've already highlighted. Clear it first to re-highlight.");
@@ -430,40 +431,17 @@ async function handleSelectionAction() {
   const h = { start, end, quote: sel.quote, colorId };
 
   // Save locally
-  mineHighlights.push(h);
-  saveMine();
+  addMineHighlight(h);
 
-  // Best-effort: also save to community
+  // Save to community
   try {
+    console.log("POSTing to community:", getApiBase(), h);
     await postCommunityHighlight(h);
+    // no toast (you requested less chatter)
   } catch (e) {
     console.warn("Community save failed:", e);
-    // Keep quiet or show a minimal message—your call:
+    // optional toast:
     // toast("Saved locally. (Community save failed.)");
-  }
-
-  window.getSelection()?.removeAllRanges();
-  render();
-
-
-// Disallow highlighting any text that overlaps something you've already highlighted
-if (overlapsAnyMine(start, end)) {
-  window.getSelection()?.removeAllRanges();
-  toast("That selection overlaps text you've already highlighted. Clear it first to re-highlight.");
-  return;
-}
-
-
-
-addMineHighlight(h);
-
-// best-effort community save
-try {
-    const apiBase = getApiBase();
-
-  } catch (e) {
-    console.warn(e);
-    toast("Saved locally. (Community save failed.)");
   }
 
   window.getSelection()?.removeAllRanges();
@@ -616,7 +594,6 @@ async function clearCommunityWithPassword(token) {
   return bodyText ? JSON.parse(bodyText) : { ok: true };
 }
 
-console.log(rawText.length, el("textLayer").textContent.length);
 
 
 main();
