@@ -16,7 +16,8 @@ let activeToolId = null; // selected tool
 
 const el = (id) => document.getElementById(id);
 
-const API_BASE = "http://127.0.0.1:8000"; // TODO: change to your deployed backend URL later
+//const API_BASE = "http://127.0.0.1:8000"; 
+const API_BASE = "https://highlight-backend.onrender.com/";
 
 
 function toast(msg) {
