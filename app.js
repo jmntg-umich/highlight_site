@@ -437,10 +437,11 @@ if (colorId === "clear") {
   // Second: for each overlapped local record, try deleting ONE matching
   // community row (exact span+color). This removes one "layer" per local ticket.
   try {
-    for (const h of overlappedMine) {
-      await deleteOneCommunityExact(h.start, h.end, h.colorId);
+    if (overlappedMine.length) {
+      const h0 = overlappedMine[0];
+      await deleteOneCommunityExact(h0.start, h0.end, h0.colorId);
+      await refreshCommunity();
     }
-    await refreshCommunity();
   } catch (e) {
     console.warn("Community delete-one-exact failed:", e);
   }
