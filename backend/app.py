@@ -116,6 +116,7 @@ def create_app():
 
     @app.post("/admin/clear")
     def admin_clear():
+        admin_token = os.getenv("ADMIN_TOKEN", "")  # read at request time
         token = request.headers.get("X-Admin-Token", "")
         if not admin_token or token != admin_token:
             return jsonify({"error": "Unauthorized"}), 401
