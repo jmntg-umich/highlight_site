@@ -14,7 +14,13 @@ def create_app():
 
     allowed_origins = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "*").split(",") if o.strip()]
     # If you set explicit origins, Flask-Cors will reflect only those.
-    CORS(app, resources={r"/*": {"origins": allowed_origins if allowed_origins else "*"}})
+    CORS(
+    app,
+    resources={r"/*": {"origins": allowed_origins if allowed_origins else "*"}},
+    methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "X-Admin-Token"],
+)
+
 
     admin_token = os.getenv("ADMIN_TOKEN", "")
 

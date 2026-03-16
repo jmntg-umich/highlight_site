@@ -225,7 +225,11 @@ a{ color: inherit; }
   background: rgba(255,255,255,0.75);
   border: 1px solid rgba(17,24,39,0.10);
 
+  /* wrapping behavior */
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: normal;
+
   font-size: 16px;
   line-height: 1.8;
 
@@ -233,23 +237,22 @@ a{ color: inherit; }
   display: grid;
 }
 
-/* Put both layers in the same grid cell so they overlap */
-.text-layer{
-    z-index: 2;
-}
-
+/* Both layers overlap in the same grid cell */
+.text-layer,
 .hl-layer{
-z-index: 1;
-pointer-events: none;
-  grid-area: 1 / 1;
+  grid-area: 1 / 1;          /* IMPORTANT for overlay + wrapping */
+  width: 100%;
+  min-width: 0;
 
-  padding: 0 !important;
-  margin: 0 !important;
-  border: 0 !important;
-  background: transparent !important;
-  border-radius: 0 !important;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
 
   white-space: inherit;
+  overflow-wrap: inherit;
+  word-break: inherit;
+
   font: inherit;
   line-height: inherit;
   box-sizing: border-box;
