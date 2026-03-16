@@ -445,7 +445,6 @@ async function handleSelectionAction() {
   window.getSelection()?.removeAllRanges();
   render();
 
-const start = sel.start, end = sel.end, colorId = activeToolId;
 
 // Disallow highlighting any text that overlaps something you've already highlighted
 if (overlapsAnyMine(start, end)) {
@@ -455,7 +454,6 @@ if (overlapsAnyMine(start, end)) {
 }
 
 
-const h = { start, end, quote: sel.quote, colorId };
 
 addMineHighlight(h);
 
