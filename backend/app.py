@@ -113,6 +113,35 @@ def create_app():
         )
         db.commit()
         return jsonify({"ok": True, "createdAt": created_at}), 201
+    
+    @app.post("/highlights/delete_one_exact")
+    def delete_one_exact():
+        payload = request.get_json(silent=True) or {}
+        try:
+            start = int(payload.get("start"))
+            end = int(payload.get("end"))
+        except Exception:
+            return jsonify({"error": "start/end must be integers"}), 400
+
+        color_id = payload.get("colorId")
+        if not isinstance(color_id, str) or not color_id:
+            return jsonify({"error": "colorId required"}), 400
+
+        if start < 0 or end <= start:
+            return jsonify({"error": "Invalid range"}), 400
+
+        db = get_db()
+        row = db.execute(
+            "SELECT id FROM highlights WHERE start=? AND end=? AND colorId=? ORDER BY id ASC LIMIT 1",
+            (start, end, color_id)
+        ).fetchone()
+
+        if row is None:
+            return jsonify({"ok": True, "deleted": 0})
+
+        db.execute("DELETE FROM highlights WHERE id=?", (row["id"],))
+        db.commit()
+        return jsonify({"ok": True, "deleted": 1})
 
     @app.post("/admin/clear")
     def admin_clear():
@@ -139,3 +168,5 @@ if __name__ == "__main__":
     load_dotenv()
     port = int(os.getenv("PORT", "8000"))
     app.run(host="0.0.0.0", port=port, debug=True)
+
+    

@@ -421,14 +421,37 @@ async function handleSelectionAction() {
   const colorId = activeToolId;
 
   // CLEAR tool: remove only selected portion from *mine*
-  if (colorId === "clear") {
-    const r = clearMineRange(start, end);
-    window.getSelection()?.removeAllRanges();
-    render();
-    const total = r.deleted + r.trimmed + r.split;
-    toast(total ? "Cleared selected text from your highlights." : "No local highlights to clear there.");
-    return;
+if (colorId === "clear") {
+  // Find which of *your* local highlight records overlap the selection.
+  // We'll consume (delete) any fully-covered local records and also
+  // trim/split partially overlapped ones using your existing clearMineRange.
+  const overlappedMine = mineHighlights
+    .map(sanitizeHighlight)
+    .filter(Boolean)
+    .filter(h => h.start < end && start < h.end);
+
+  // First: perform local trim/split so you can't repeatedly delete
+  // community rows using the same local record.
+  const r = clearMineRange(start, end);
+
+  // Second: for each overlapped local record, try deleting ONE matching
+  // community row (exact span+color). This removes one "layer" per local ticket.
+  try {
+    for (const h of overlappedMine) {
+      await deleteOneCommunityExact(h.start, h.end, h.colorId);
+    }
+    await refreshCommunity();
+  } catch (e) {
+    console.warn("Community delete-one-exact failed:", e);
   }
+
+  window.getSelection()?.removeAllRanges();
+  render();
+
+  const total = r.deleted + r.trimmed + r.split;
+  toast(total ? "Cleared selected text from your highlights." : "No local highlights to clear there.");
+  return;
+}
 
   // Block any overlap with existing mine highlights
   if (overlapsAnyMine(start, end)) {
@@ -455,6 +478,17 @@ const h = { start, end, quote: sel.quote, colorId, deviceKey: getDeviceKey() };
 
   window.getSelection()?.removeAllRanges();
   render();
+}
+
+async function deleteOneCommunityExact(start, end, colorId) {
+  const base = getApiBase().replace(/\/+$/, "");
+  const resp = await fetch(`${base}/highlights/delete_one_exact`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ start, end, colorId })
+  });
+  if (!resp.ok) throw new Error(await resp.text());
+  return await resp.json(); // {ok:true, deleted:0|1}
 }
 
 async function refreshCommunity() {
