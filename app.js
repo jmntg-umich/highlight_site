@@ -17,7 +17,10 @@ let activeToolId = null; // selected tool
 const el = (id) => document.getElementById(id);
 
 //const API_BASE = "http://127.0.0.1:8000"; 
-const API_BASE = "https://highlight-backend.onrender.com/";
+const API_BASE = "https://highlight-backend.onrender.com";
+function getApiBase() {
+  return API_BASE;
+}
 
 
 function toast(msg) {
@@ -28,9 +31,7 @@ function toast(msg) {
   toast._timer = window.setTimeout(() => t.classList.remove("show"), 1600);
 }
 
-function getApiBase() {
-  return API_BASE;
-}
+
 
 
 function loadMine() {
@@ -401,6 +402,8 @@ function clearMineRange(start, end) {
 }
 
 async function handleSelectionAction() {
+    console.log("handleSelectionAction fired", activeToolId);
+
   const sel = selectionToOffsets();
   if (!sel) return;
 
@@ -414,6 +417,33 @@ async function handleSelectionAction() {
     toast(total ? "Cleared selected text from your highlights." : "No local highlights to clear there.");
     return;
   }
+  // ---- Apply highlight (non-clear) ----
+  const start = sel.start, end = sel.end, colorId = activeToolId;
+
+  // Disallow highlighting any text that overlaps something you've already highlighted
+  if (overlapsAnyMine(start, end)) {
+    window.getSelection()?.removeAllRanges();
+    toast("That selection overlaps text you've already highlighted. Clear it first to re-highlight.");
+    return;
+  }
+
+  const h = { start, end, quote: sel.quote, colorId };
+
+  // Save locally
+  mineHighlights.push(h);
+  saveMine();
+
+  // Best-effort: also save to community
+  try {
+    await postCommunityHighlight(h);
+  } catch (e) {
+    console.warn("Community save failed:", e);
+    // Keep quiet or show a minimal message—your call:
+    // toast("Saved locally. (Community save failed.)");
+  }
+
+  window.getSelection()?.removeAllRanges();
+  render();
 
 const start = sel.start, end = sel.end, colorId = activeToolId;
 
