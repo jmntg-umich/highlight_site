@@ -264,6 +264,10 @@ def create_app():
         db.execute("DELETE FROM highlights")
         db.commit()
         return jsonify({"ok": True})
+    
+    @app.route("/highlights/erase", methods=["OPTIONS"])
+    def erase_options():
+        return ("", 204)
 
     return app
 
