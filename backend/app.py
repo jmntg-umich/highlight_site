@@ -38,10 +38,12 @@ def create_app():
 
     def init_db():
         db = sqlite3.connect(DB_PATH)
+        db.row_factory = sqlite3.Row
+
+        # 1) Ensure table exists (old schema might exist already)
         db.execute("""
             CREATE TABLE IF NOT EXISTS highlights (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                deviceKey TEXT NOT NULL,
                 start INTEGER NOT NULL,
                 end INTEGER NOT NULL,
                 quote TEXT NOT NULL,
@@ -49,8 +51,17 @@ def create_app():
                 createdAt TEXT NOT NULL
             );
         """)
-        db.execute("CREATE INDEX IF NOT EXISTS idx_highlights_device ON highlights(deviceKey);")
+
+        # 2) If deviceKey column is missing, add it
+        cols = [r["name"] for r in db.execute("PRAGMA table_info(highlights);").fetchall()]
+        if "deviceKey" not in cols:
+            db.execute("ALTER TABLE highlights ADD COLUMN deviceKey TEXT;")
+            # Existing rows (from before) will have NULL deviceKey; that's ok.
+
+        # 3) Create indexes (safe after column exists)
         db.execute("CREATE INDEX IF NOT EXISTS idx_highlights_start_end ON highlights(start, end);")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_highlights_device ON highlights(deviceKey);")
+
         db.commit()
         db.close()
 
