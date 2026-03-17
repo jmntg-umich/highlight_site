@@ -12,6 +12,9 @@ DB_PATH = os.path.join(os.path.dirname(__file__), "highlights.db")
 
 def create_app():
     app = Flask(__name__)
+    @app.get("/debug/routes")
+    def debug_routes():
+        return jsonify(sorted([f"{r.rule} {sorted(r.methods)}" for r in app.url_map.iter_rules()]))
 
     allowed_origins = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "*").split(",") if o.strip()]
     CORS(
