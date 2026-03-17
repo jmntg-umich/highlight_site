@@ -66,9 +66,14 @@ function sanitizeHighlight(h) {
   const ok =
     h && Number.isInteger(h.start) && Number.isInteger(h.end) &&
     h.start >= 0 && h.end > h.start &&
-    typeof h.colorId === "string" &&
-    typeof h.quote === "string";
-  return ok ? h : null;
+    typeof h.colorId === "string" && h.colorId.length > 0;
+
+  if (!ok) return null;
+
+  // Ensure quote exists (optional for overlap/ticketing)
+  if (typeof h.quote !== "string") h.quote = "";
+
+  return h;
 }
 
 function toolById(id) {
@@ -351,6 +356,7 @@ function overlapsAnyMine(start, end) {
 }
 
 function clearMineRange(start, end) {
+    
   const removedPieces = { deleted: 0, trimmed: 0, split: 0 };
 
   const next = [];
@@ -370,15 +376,17 @@ function clearMineRange(start, end) {
       continue;
     }
 
+    
     // overlap on left side -> keep right remainder
-    if (start <= h.start && end < h.end) {
-      const nh = { ...h, start: end, quote: rawText.slice(end, h.end) };
-      if (nh.end > nh.start) {
-        next.push(nh);
-        removedPieces.trimmed += 1;
-      }
-      continue;
-    }
+if (start <= h.start && end < h.end) {
+  const oldEnd = h.end;
+  const nh = { ...h, start: end, quote: rawText.slice(end, oldEnd) };
+  if (nh.end > nh.start) {
+    next.push(nh);
+    removedPieces.trimmed += 1;
+  }
+  continue;
+}
 
     // overlap on right side -> keep left remainder
     if (h.start < start && h.end <= end) {
@@ -422,28 +430,15 @@ async function handleSelectionAction() {
 
   // CLEAR tool: remove only selected portion from *mine*
 if (colorId === "clear") {
-  // Find which of *your* local highlight records overlap the selection.
-  // We'll consume (delete) any fully-covered local records and also
-  // trim/split partially overlapped ones using your existing clearMineRange.
-  const overlappedMine = mineHighlights
-    .map(sanitizeHighlight)
-    .filter(Boolean)
-    .filter(h => h.start < end && start < h.end);
-
-  // First: perform local trim/split so you can't repeatedly delete
-  // community rows using the same local record.
+  // 1) Clear locally (trim/split) so your view updates immediately
   const r = clearMineRange(start, end);
 
-  // Second: for each overlapped local record, try deleting ONE matching
-  // community row (exact span+color). This removes one "layer" per local ticket.
+  // 2) Tell backend to erase ONLY highlights created by this deviceKey
   try {
-    if (overlappedMine.length) {
-      const h0 = overlappedMine[0];
-      await deleteOneCommunityExact(h0.start, h0.end, h0.colorId);
-      await refreshCommunity();
-    }
+    await eraseCommunityRange(start, end);
+    await refreshCommunity();
   } catch (e) {
-    console.warn("Community delete-one-exact failed:", e);
+    console.warn("Community erase failed:", e);
   }
 
   window.getSelection()?.removeAllRanges();
@@ -461,7 +456,12 @@ if (colorId === "clear") {
     return;
   }
 
-const h = { start, end, quote: sel.quote, colorId, deviceKey: getDeviceKey() };
+const h = {
+  start, end, quote: sel.quote, colorId,
+  deviceKey: getDeviceKey(),
+  originStart: start,
+  originEnd: end
+};
 
   // Save locally
   addMineHighlight(h);
@@ -479,6 +479,17 @@ const h = { start, end, quote: sel.quote, colorId, deviceKey: getDeviceKey() };
 
   window.getSelection()?.removeAllRanges();
   render();
+}
+
+async function eraseCommunityRange(start, end) {
+  const base = getApiBase().replace(/\/+$/, "");
+  const resp = await fetch(`${base}/highlights/erase`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ deviceKey: getDeviceKey(), start, end })
+  });
+  if (!resp.ok) throw new Error(await resp.text());
+  return await resp.json();
 }
 
 async function deleteOneCommunityExact(start, end, colorId) {

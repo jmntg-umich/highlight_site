@@ -41,6 +41,7 @@ def create_app():
         db.execute("""
             CREATE TABLE IF NOT EXISTS highlights (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                deviceKey TEXT NOT NULL,
                 start INTEGER NOT NULL,
                 end INTEGER NOT NULL,
                 quote TEXT NOT NULL,
@@ -48,6 +49,7 @@ def create_app():
                 createdAt TEXT NOT NULL
             );
         """)
+        db.execute("CREATE INDEX IF NOT EXISTS idx_highlights_device ON highlights(deviceKey);")
         db.execute("CREATE INDEX IF NOT EXISTS idx_highlights_start_end ON highlights(start, end);")
         db.commit()
         db.close()
@@ -65,6 +67,9 @@ def create_app():
 
         quote = payload.get("quote", "")
         color_id = payload.get("colorId", "")
+        device_key = payload.get("deviceKey", "")
+        if not isinstance(device_key, str) or len(device_key) < 8 or len(device_key) > 128:
+            return None, "Invalid deviceKey"
 
         if start < 0 or end <= start:
             return None, "Invalid range"
@@ -74,6 +79,7 @@ def create_app():
             return None, "Invalid colorId"
 
         return {
+            "deviceKey": device_key,
             "start": start,
             "end": end,
             "quote": quote,
@@ -108,11 +114,111 @@ def create_app():
 
         created_at = datetime.now(timezone.utc).isoformat()
         db.execute(
-            "INSERT INTO highlights(start, end, quote, colorId, createdAt) VALUES (?,?,?,?,?)",
-            (h["start"], h["end"], h["quote"], h["colorId"], created_at)
+            "INSERT INTO highlights(deviceKey, start, end, quote, colorId, createdAt) VALUES (?,?,?,?,?,?)",
+            (h["deviceKey"], h["start"], h["end"], h["quote"], h["colorId"], created_at)        
         )
         db.commit()
         return jsonify({"ok": True, "createdAt": created_at}), 201
+    
+    @app.post("/highlights/erase")
+    def erase():
+        payload = request.get_json(silent=True) or {}
+        device_key = payload.get("deviceKey", "")
+        try:
+            a = int(payload.get("start"))
+            b = int(payload.get("end"))
+        except Exception:
+            return jsonify({"error": "start/end must be integers"}), 400
+
+        if not isinstance(device_key, str) or len(device_key) < 8 or len(device_key) > 128:
+            return jsonify({"error": "Invalid deviceKey"}), 400
+        if a < 0 or b <= a:
+            return jsonify({"error": "Invalid range"}), 400
+
+        db = get_db()
+
+        # Get rows for this device that overlap [a,b)
+        rows = db.execute(
+            """
+            SELECT id, start, end, quote, colorId, createdAt
+            FROM highlights
+            WHERE deviceKey = ?
+            AND NOT (end <= ? OR start >= ?)
+            ORDER BY start ASC, end ASC
+            """,
+            (device_key, a, b)
+        ).fetchall()
+
+        deleted = 0
+        updated = 0
+        inserted = 0
+
+        for r in rows:
+            rid = r["id"]
+            s = r["start"]
+            e = r["end"]
+            quote = r["quote"]
+            colorId = r["colorId"]
+            createdAt = r["createdAt"]
+
+            # Case 1: fully covered -> delete row
+            if a <= s and e <= b:
+                db.execute("DELETE FROM highlights WHERE id=?", (rid,))
+                deleted += 1
+                continue
+
+            # Case 2: overlap left edge -> keep right remainder [b, e)
+            if a <= s and b < e:
+                new_start = b
+                new_end = e
+                new_quote = quote[(b - s):] if isinstance(quote, str) else ""
+                db.execute(
+                    "UPDATE highlights SET start=?, end=?, quote=? WHERE id=?",
+                    (new_start, new_end, new_quote, rid)
+                )
+                updated += 1
+                continue
+
+            # Case 3: overlap right edge -> keep left remainder [s, a)
+            if s < a and e <= b:
+                new_start = s
+                new_end = a
+                new_quote = quote[:(a - s)] if isinstance(quote, str) else ""
+                db.execute(
+                    "UPDATE highlights SET start=?, end=?, quote=? WHERE id=?",
+                    (new_start, new_end, new_quote, rid)
+                )
+                updated += 1
+                continue
+
+            # Case 4: erase in middle -> split into [s,a) and [b,e)
+            if s < a and b < e:
+                left_start, left_end = s, a
+                right_start, right_end = b, e
+
+                left_quote = quote[:(a - s)] if isinstance(quote, str) else ""
+                right_quote = quote[(b - s):] if isinstance(quote, str) else ""
+
+                # Update current row to left piece
+                db.execute(
+                    "UPDATE highlights SET start=?, end=?, quote=? WHERE id=?",
+                    (left_start, left_end, left_quote, rid)
+                )
+                updated += 1
+
+                # Insert right piece as a new row (same deviceKey/color/createdAt)
+                db.execute(
+                    """
+                    INSERT INTO highlights(deviceKey, start, end, quote, colorId, createdAt)
+                    VALUES (?,?,?,?,?,?)
+                    """,
+                    (device_key, right_start, right_end, right_quote, colorId, createdAt)
+                )
+                inserted += 1
+                continue
+
+        db.commit()
+        return jsonify({"ok": True, "deleted": deleted, "updated": updated, "inserted": inserted})
     
     @app.post("/highlights/delete_one_exact")
     def delete_one_exact():
