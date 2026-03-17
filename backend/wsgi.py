@@ -1,3 +1,2 @@
-from app import app
-
-# Render/Gunicorn will look for "app" in this module.
+from app import create_app
+app = create_app()
