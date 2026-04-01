@@ -1,8 +1,9 @@
 {
   "tools": [
-    { "id": "yellow", "label": "Synthesis within one sentence",     "color": "#f59e0b" },
-    { "id": "green",  "label": "Synthesis across multiple sentences",    "color": "#22c55e" },
-    { "id": "blue",   "label": "Gap in the research",  "color": "#3b82f6" },
+    { "id": "blue", "label": "Objective",     "color": "#3b82f6" },
+    { "id": "green",  "label": "Results",    "color": "#22c55e" },
+    { "id": "yellow",   "label": "Gap in the research",  "color": "#f59e0b" },
+    { "id": "purple",   "label": "Implications",  "color": "#8b5cf6" },
 
     { "id": "clear",  "label": "Erase highlight",       "color": "#94a3b8" }
   ],

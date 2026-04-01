@@ -1,0 +1,14 @@
+{
+  "tools": [
+    { "id": "yellow", "label": "Synthesis within one sentence",     "color": "#f59e0b" },
+    { "id": "green",  "label": "Synthesis across multiple sentences",    "color": "#22c55e" },
+    { "id": "blue",   "label": "Gap in the research",  "color": "#3b82f6" },
+
+    { "id": "clear",  "label": "Erase highlight",       "color": "#94a3b8" }
+  ],
+  "heat": {
+    "maxCountForFull": 6,
+    "minAlpha": 0.10,
+    "maxAlpha": 0.55
+  }
+}
