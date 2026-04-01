@@ -1,8 +1,8 @@
 {
   "tools": [
     { "id": "blue", "label": "Objective",     "color": "#3b82f6" },
+    { "id": "yellow",   "label": "Scope/Methods",  "color": "#f59e0b" },
     { "id": "green",  "label": "Results",    "color": "#22c55e" },
-    { "id": "yellow",   "label": "Gap in the research",  "color": "#f59e0b" },
     { "id": "purple",   "label": "Implications",  "color": "#8b5cf6" },
 
     { "id": "clear",  "label": "Erase highlight",       "color": "#94a3b8" }
