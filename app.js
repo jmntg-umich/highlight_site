@@ -157,89 +157,172 @@ function alphaForCount(count) {
   return (HEAT.minAlpha || 0.10) + t * ((HEAT.maxAlpha || 0.55) - (HEAT.minAlpha || 0.10));
 }
 
-function buildCoverage(textLen, highlights) {
-  // returns an array counts[textLen] where each index is how many highlights cover that char
-  const diff = new Array(textLen + 1).fill(0);
-  for (const h of highlights) {
-    if (!h) continue;
-    const s = Math.max(0, Math.min(textLen, h.start));
-    const e = Math.max(0, Math.min(textLen, h.end));
-    if (e <= s) continue;
-    diff[s] += 1;
-    diff[e] -= 1;
-  }
-  const counts = new Array(textLen).fill(0);
-  let run = 0;
-  for (let i = 0; i < textLen; i++) {
-    run += diff[i];
-    counts[i] = run;
-  }
-  return counts;
+function clamp01(value) {
+  return Math.max(0, Math.min(1, value));
 }
 
-function dominantColorAt(i, typedHighlights) {
-  // Choose which color to show when multiple colors overlap at char i.
-  // Rule: most frequent color among highlights covering this char; tie -> first in TOOLS order.
-  const freq = new Map();
-  for (const h of typedHighlights) {
-    if (h.start <= i && i < h.end) {
-      freq.set(h.colorId, (freq.get(h.colorId) || 0) + 1);
+function alphaForColorCount(count) {
+  if (count <= 0) return 0;
+
+  const maxCount = Math.max(1, Number(HEAT.maxCountForFull) || 6);
+  const minAlpha = Number(HEAT.minAlpha) || 0.10;
+  const maxAlpha = Number(HEAT.maxAlpha) || 0.55;
+
+  // First highlight starts at minAlpha. Repeated highlights deepen the color.
+  const t = Math.min(1, (count - 1) / Math.max(1, maxCount - 1));
+  return clamp01(minAlpha + t * (maxAlpha - minAlpha));
+}
+
+function buildColorCoverage(textLen, highlights) {
+  // One difference array per color:
+  // Map<colorId, number[textLen + 1]>
+  const diffs = new Map();
+
+  for (const h of highlights) {
+    if (!h) continue;
+
+    const start = Math.max(0, Math.min(textLen, h.start));
+    const end = Math.max(0, Math.min(textLen, h.end));
+    if (end <= start) continue;
+
+    if (!diffs.has(h.colorId)) {
+      diffs.set(h.colorId, new Array(textLen + 1).fill(0));
     }
+
+    const diff = diffs.get(h.colorId);
+    diff[start] += 1;
+    diff[end] -= 1;
   }
-  let bestId = null;
-  let bestCount = -1;
-  for (const t of TOOLS) {
-    const c = freq.get(t.id) || 0;
-    if (c > bestCount) {
-      bestCount = c;
-      bestId = t.id;
+
+  // Convert differences into running counts.
+  const coverage = new Map();
+
+  for (const [colorId, diff] of diffs) {
+    const counts = new Array(textLen);
+    let running = 0;
+
+    for (let i = 0; i < textLen; i++) {
+      running += diff[i];
+      counts[i] = running;
     }
+
+    coverage.set(colorId, counts);
   }
-  return bestId;
+
+  return coverage;
+}
+
+function compositeColors(layers) {
+  /*
+   * Alpha-composite all active colors over a transparent background.
+   * Each layer is { r, g, b, a }.
+   *
+   * The result can then be used as rgba(...). Because the browser draws that
+   * RGBA over the page, this preserves both color mixing and transparency.
+   */
+  let premultipliedR = 0;
+  let premultipliedG = 0;
+  let premultipliedB = 0;
+  let outputAlpha = 0;
+
+  for (const layer of layers) {
+    const a = clamp01(layer.a);
+    if (a <= 0) continue;
+
+    // "Source over" compositing.
+    premultipliedR = layer.r * a + premultipliedR * (1 - a);
+    premultipliedG = layer.g * a + premultipliedG * (1 - a);
+    premultipliedB = layer.b * a + premultipliedB * (1 - a);
+    outputAlpha = a + outputAlpha * (1 - a);
+  }
+
+  if (outputAlpha <= 0) return null;
+
+  return {
+    r: Math.round(premultipliedR / outputAlpha),
+    g: Math.round(premultipliedG / outputAlpha),
+    b: Math.round(premultipliedB / outputAlpha),
+    a: outputAlpha
+  };
+}
+
+function colorAt(index, colorCoverage) {
+  const layers = [];
+
+  // TOOLS order gives deterministic compositing.
+  for (const tool of TOOLS) {
+    if (tool.id === "clear") continue;
+
+    const count = colorCoverage.get(tool.id)?.[index] || 0;
+    if (count <= 0) continue;
+
+    const { r, g, b } = hexToRgb(tool.color);
+    layers.push({
+      r,
+      g,
+      b,
+      a: alphaForColorCount(count)
+    });
+  }
+
+  // Render unknown color IDs too, with a yellow fallback.
+  for (const [colorId, counts] of colorCoverage) {
+    if (TOOLS.some(tool => tool.id === colorId)) continue;
+
+    const count = counts[index] || 0;
+    if (count <= 0) continue;
+
+    const { r, g, b } = hexToRgb("#f59e0b");
+    layers.push({
+      r,
+      g,
+      b,
+      a: alphaForColorCount(count)
+    });
+  }
+
+  const mixed = compositeColors(layers);
+  if (!mixed) return null;
+
+  return `rgba(${mixed.r},${mixed.g},${mixed.b},${mixed.a.toFixed(3)})`;
 }
 
 function renderHeat(text, highlights) {
-  // highlights: array of {start,end,colorId}
-  // Produces HTML string with span segments where coverage count > 0
   const len = text.length;
   if (len === 0) return "";
 
-  const cleanHighlights = highlights.map(sanitizeHighlight).filter(Boolean);
-  if (cleanHighlights.length === 0) return escapeHtml(text);
+  const cleanHighlights = highlights
+    .map(sanitizeHighlight)
+    .filter(Boolean);
 
-  const counts = buildCoverage(len, cleanHighlights);
+  if (cleanHighlights.length === 0) {
+    return escapeHtml(text);
+  }
+
+  const colorCoverage = buildColorCoverage(len, cleanHighlights);
 
   let out = "";
   let i = 0;
 
   while (i < len) {
-    const c = counts[i] || 0;
-    if (c <= 0) {
-      // unhighlighted run
-      let j = i + 1;
-      while (j < len && (counts[j] || 0) <= 0) j++;
-      out += escapeHtml(text.slice(i, j));
-      i = j;
-      continue;
-    }
-
-    // highlighted run (same count AND same dominant color to reduce DOM size)
-    const colorId0 = dominantColorAt(i, cleanHighlights) || "yellow";
+    const background = colorAt(i, colorCoverage);
     let j = i + 1;
-    while (j < len) {
-      const cj = counts[j] || 0;
-      if (cj !== c) break;
-      const colorIdJ = dominantColorAt(j, cleanHighlights) || "yellow";
-      if (colorIdJ !== colorId0) break;
+
+    // Group adjacent characters having the same mixed color.
+    while (j < len && colorAt(j, colorCoverage) === background) {
       j++;
     }
 
-    const tool = toolById(colorId0) || { color: "#f59e0b" };
-    const { r, g, b } = hexToRgb(tool.color);
-    const a = alphaForCount(c);
+    const segment = escapeHtml(text.slice(i, j));
 
-    out += `<span class="heatmark" style="background-color: rgba(${r},${g},${b},${a})">` +
-      `${escapeHtml(text.slice(i, j))}</span>`;
+    if (!background) {
+      out += segment;
+    } else {
+      out +=
+        `<span class="heatmark" ` +
+        `style="background-color:${background}">${segment}</span>`;
+    }
+
     i = j;
   }
 
@@ -258,8 +341,15 @@ function render() {
   const comm = communityHighlights.map(sanitizeHighlight).filter(Boolean);
 
   let combined = [];
-  if (viewMode === "mine") combined = mine;
-  if (viewMode === "community") combined = [...comm, ...mine]; // community includes mine
+  if (viewMode === "mine") {
+  combined = mine;
+}
+
+if (viewMode === "community") {
+  // Use this if GET /highlights returns everybody's highlights,
+  // including highlights from the current device.
+  combined = comm;
+}
 
   hl.innerHTML = renderHeat(rawText, combined);
 }
