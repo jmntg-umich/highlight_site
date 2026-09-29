@@ -331,18 +331,30 @@ function renderHeat(text, highlights) {
 
 function render() {
   const hl = el("hlLayer");
+  if (!hl) return;
 
   if (viewMode === "clean") {
-    hl.innerHTML = "";   // no highlights, text remains
+    hl.innerHTML = "";
     return;
   }
 
-  const mine = mineHighlights.map(sanitizeHighlight).filter(Boolean);
-  const comm = communityHighlights.map(sanitizeHighlight).filter(Boolean);
+  const mine = mineHighlights
+    .map(sanitizeHighlight)
+    .filter(Boolean);
+
+  const comm = communityHighlights
+    .map(sanitizeHighlight)
+    .filter(Boolean);
 
   let combined = [];
+
   if (viewMode === "mine") {
-  combined = mine;
+    combined = mine;
+  } else if (viewMode === "community") {
+    combined = dedupeHighlights([...comm, ...mine]);
+  }
+
+  hl.innerHTML = renderHeat(rawText, combined);
 }
 
 if (viewMode === "community") {
@@ -401,10 +413,6 @@ function dedupeHighlights(highlights) {
     seen.add(key);
     return true;
   });
-}
-
-if (viewMode === "community") {
-  combined = dedupeHighlights([...comm, ...mine]);
 }
 
 function buildPalette() {
@@ -538,79 +546,78 @@ async function handleSelectionAction() {
   const sel = selectionToOffsets();
   if (!sel) return;
 
-  if (!activeToolId) { toast("Select a tool first."); return; }
+  if (!activeToolId) {
+    toast("Select a tool first.");
+    return;
+  }
 
   const start = sel.start;
   const end = sel.end;
   const colorId = activeToolId;
 
-  // CLEAR tool: remove only selected portion from *mine*
-if (colorId === "clear") {
-  // 1) Clear locally (trim/split) so your view updates immediately
-  const r = clearMineRange(start, end);
+  // Clear only this device's selected highlight range.
+  if (colorId === "clear") {
+    const result = clearMineRange(start, end);
 
-  // 2) Tell backend to erase ONLY highlights created by this deviceKey
-  try {
-    await eraseCommunityRange(start, end);
-    await refreshCommunity();
-  } catch (e) {
-    console.warn("Community erase failed:", e);
-  }
-
-  window.getSelection()?.removeAllRanges();
-  render();
-
-  const total = r.deleted + r.trimmed + r.split;
-  toast(total ? "Cleared selected text from your highlights." : "No local highlights to clear there.");
-  return;
-}
-
-  // Block any overlap with existing mine highlights
-  if (overlapsAnyMine(start, end)) {
     window.getSelection()?.removeAllRanges();
-    toast("That selection overlaps text you've already highlighted. Clear it first to re-highlight.");
+    render();
+
+    try {
+      await eraseCommunityRange(start, end);
+      await refreshCommunity();
+    } catch (e) {
+      console.warn("Community erase failed:", e);
+      toast("Cleared locally, but community sync failed.");
+    }
+
+    const total =
+      result.deleted +
+      result.trimmed +
+      result.split;
+
+    if (total > 0) {
+      toast("Cleared selected text from your highlights.");
+    } else {
+      toast("No local highlights to clear there.");
+    }
+
     return;
   }
 
-const h = {
-  start, end, quote: sel.quote, colorId,
-  deviceKey: getDeviceKey(),
-  originStart: start,
-  originEnd: end
-};
+  if (overlapsAnyMine(start, end)) {
+    window.getSelection()?.removeAllRanges();
+    toast(
+      "That selection overlaps text you've already highlighted. " +
+      "Clear it first to re-highlight."
+    );
+    return;
+  }
 
-  // Save locally
+  const h = {
+    start,
+    end,
+    quote: sel.quote,
+    colorId,
+    deviceKey: getDeviceKey(),
+    originStart: start,
+    originEnd: end
+  };
+
+  // Save locally and display immediately.
   addMineHighlight(h);
-
-  // Immediately add to the in-memory community view.
-addCommunityHighlightIfMissing(h);
-
-// Render now instead of waiting for the network.
-window.getSelection()?.removeAllRanges();
-render();
-
-// Save to backend.
-try {
-  console.log("POSTing to community:", getApiBase(), h);
-  await postCommunityHighlight(h);
-} catch (e) {
-  console.warn("Community save failed:", e);
-  toast("Highlight saved locally, but community sync failed.");
-}
-
-// Save to community
-try {
-  console.log("POSTing to community:", getApiBase(), h);
-  await postCommunityHighlight(h);
-
-  // Add it immediately to the in-memory community view.
-  communityHighlights.push(h);
-} catch (e) {
-  console.warn("Community save failed:", e);
-}
+  addCommunityHighlightIfMissing(h);
 
   window.getSelection()?.removeAllRanges();
   render();
+
+  // Post exactly once.
+  try {
+    console.log("POSTing to community:", getApiBase(), h);
+    await postCommunityHighlight(h);
+  } catch (e) {
+    console.warn("Community save failed:", e);
+    toast("Highlight saved locally, but community sync failed.");
+  }
 }
 
 function sameHighlight(a, b) {
@@ -639,17 +646,6 @@ async function eraseCommunityRange(start, end) {
   return await resp.json();
 }
 
-try {
-  console.log("POSTing to community:", getApiBase(), h);
-  await postCommunityHighlight(h);
-  addCommunityHighlightIfMissing(h);
-} catch (e) {
-  console.warn("Community save failed:", e);
-}
-
-window.getSelection()?.removeAllRanges();
-render();
-
 async function deleteOneCommunityExact(start, end, colorId) {
   const base = getApiBase().replace(/\/+$/, "");
   const resp = await fetch(`${base}/highlights/delete_one_exact`, {
@@ -663,16 +659,35 @@ async function deleteOneCommunityExact(start, end, colorId) {
 
 async function refreshCommunity() {
   const apiBase = getApiBase();
-  if (!apiBase) { toast("Set API base first."); return; }
+
+  if (!apiBase) {
+    toast("Set API base first.");
+    return;
+  }
+
   try {
     const base = apiBase.replace(/\/+$/, "");
-    const resp = await fetch(`${base}/highlights`, { cache: "no-store" });
-    if (!resp.ok) throw new Error(await resp.text());
+    const resp = await fetch(`${base}/highlights`, {
+      cache: "no-store"
+    });
+
+    if (!resp.ok) {
+      throw new Error(await resp.text());
+    }
+
     const data = await resp.json();
-    communityHighlights = Array.isArray(data) ? data : (data.highlights || []);
+    const serverHighlights = Array.isArray(data)
+      ? data
+      : (data.highlights || []);
+
+    communityHighlights = dedupeHighlights([
+      ...serverHighlights,
+      ...mineHighlights
+    ]);
+
     render();
   } catch (e) {
-    console.warn(e);
+    console.warn("Community refresh failed:", e);
     toast("Failed to load community highlights.");
   }
 }
@@ -749,13 +764,25 @@ content.addEventListener("mouseup", () => setTimeout(handleSelectionAction, 0));
 }
 
 async function main() {
-  await loadTools();
-  buildPalette();
-  loadMine();
-  wireUi();
-  await loadText();
-  if (getApiBase()) refreshCommunity();
+  try {
+    await loadTools();
+    buildPalette();
+
+    loadMine();
+    wireUi();
+
+    await loadText();
+
+    if (getApiBase()) {
+      await refreshCommunity();
+    }
+  } catch (e) {
+    console.error("Application failed to initialize:", e);
+    toast("The page failed to load. Check the browser console.");
+  }
 }
+
+main();
 
 function hasExactMineHighlight(start, end, colorId) {
   return mineHighlights.some(h =>
