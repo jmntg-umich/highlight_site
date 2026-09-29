@@ -1,0 +1,15 @@
+{
+  "tools": [
+    { "id": "blue", "label": "Objective",     "color": "#3b82f6" },
+    { "id": "yellow",   "label": "Scope/Methods",  "color": "#f59e0b" },
+    { "id": "green",  "label": "Results",    "color": "#22c55e" },
+    { "id": "purple",   "label": "Implications",  "color": "#8b5cf6" },
+
+    { "id": "clear",  "label": "Erase highlight",       "color": "#94a3b8" }
+  ],
+  "heat": {
+    "maxCountForFull": 6,
+    "minAlpha": 0.10,
+    "maxAlpha": 0.55
+  }
+}
