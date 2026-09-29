@@ -361,7 +361,7 @@ if (viewMode === "community") {
   // Use this if GET /highlights returns everybody's highlights,
   // including highlights from the current device.
   combined = comm;
-}
+
 
   hl.innerHTML = renderHeat(rawText, combined);
 }
