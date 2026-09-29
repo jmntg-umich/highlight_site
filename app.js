@@ -381,6 +381,32 @@ if (savedIsValid) {
 }
 }
 
+function highlightKey(h) {
+  return [
+    h.deviceKey || "",
+    h.originStart ?? h.start,
+    h.originEnd ?? h.end,
+    h.start,
+    h.end,
+    h.colorId
+  ].join("|");
+}
+
+function dedupeHighlights(highlights) {
+  const seen = new Set();
+
+  return highlights.filter(h => {
+    const key = highlightKey(h);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+if (viewMode === "community") {
+  combined = dedupeHighlights([...comm, ...mine]);
+}
+
 function buildPalette() {
   const p = el("palette");
   p.innerHTML = "";
