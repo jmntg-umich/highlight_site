@@ -582,19 +582,50 @@ const h = {
   // Save locally
   addMineHighlight(h);
 
-  // Save to community
-  try {
-    console.log("POSTing to community:", getApiBase(), h);
-    await postCommunityHighlight(h);
-    // no toast (you requested less chatter)
-  } catch (e) {
-    console.warn("Community save failed:", e);
-    // optional toast:
-    // toast("Saved locally. (Community save failed.)");
-  }
+  // Immediately add to the in-memory community view.
+addCommunityHighlightIfMissing(h);
+
+// Render now instead of waiting for the network.
+window.getSelection()?.removeAllRanges();
+render();
+
+// Save to backend.
+try {
+  console.log("POSTing to community:", getApiBase(), h);
+  await postCommunityHighlight(h);
+} catch (e) {
+  console.warn("Community save failed:", e);
+  toast("Highlight saved locally, but community sync failed.");
+}
+
+// Save to community
+try {
+  console.log("POSTing to community:", getApiBase(), h);
+  await postCommunityHighlight(h);
+
+  // Add it immediately to the in-memory community view.
+  communityHighlights.push(h);
+} catch (e) {
+  console.warn("Community save failed:", e);
+}
 
   window.getSelection()?.removeAllRanges();
   render();
+}
+
+function sameHighlight(a, b) {
+  return (
+    a.deviceKey === b.deviceKey &&
+    a.start === b.start &&
+    a.end === b.end &&
+    a.colorId === b.colorId
+  );
+}
+
+function addCommunityHighlightIfMissing(h) {
+  if (!communityHighlights.some(existing => sameHighlight(existing, h))) {
+    communityHighlights.push(h);
+  }
 }
 
 async function eraseCommunityRange(start, end) {
@@ -607,6 +638,17 @@ async function eraseCommunityRange(start, end) {
   if (!resp.ok) throw new Error(await resp.text());
   return await resp.json();
 }
+
+try {
+  console.log("POSTing to community:", getApiBase(), h);
+  await postCommunityHighlight(h);
+  addCommunityHighlightIfMissing(h);
+} catch (e) {
+  console.warn("Community save failed:", e);
+}
+
+window.getSelection()?.removeAllRanges();
+render();
 
 async function deleteOneCommunityExact(start, end, colorId) {
   const base = getApiBase().replace(/\/+$/, "");
@@ -643,12 +685,20 @@ function wireUi() {
 
 
   // View toggles
-  document.querySelectorAll('input[name="viewMode"]').forEach(r => {
-    r.addEventListener("change", () => {
-      viewMode = document.querySelector('input[name="viewMode"]:checked')?.value || "mine";
-      render();
-    });
+  document.querySelectorAll('input[name="viewMode"]').forEach(radio => {
+  radio.addEventListener("change", async () => {
+    viewMode =
+      document.querySelector('input[name="viewMode"]:checked')?.value || "mine";
+
+    // Render immediately using existing data.
+    render();
+
+    // Fetch current highlights once whenever Community is selected.
+    if (viewMode === "community") {
+      await refreshCommunity();
+    }
   });
+});
 
   // Buttons
   el("clearMineBtn").addEventListener("click", () => {
