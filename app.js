@@ -472,12 +472,12 @@ function addMineHighlight(h) {
   saveMine();
 }
 
-//function overlapsAnyMine(start, end) {
-//  return mineHighlights.some(h =>
-//    h && Number.isInteger(h.start) && Number.isInteger(h.end) &&
-//    (h.start < end && start < h.end)   // overlap test
-//  );
-//}
+function overlapsAnyMine(start, end) {
+/  return mineHighlights.some(h =>
+    h && Number.isInteger(h.start) && Number.isInteger(h.end) &&
+    (h.start < end && start < h.end)   // overlap test
+  );
+}
 
 function clearMineRange(start, end) {
     
@@ -584,14 +584,14 @@ async function handleSelectionAction() {
     return;
   }
 
-//  if (overlapsAnyMine(start, end)) {
-//    window.getSelection()?.removeAllRanges();
-//    toast(
-//      "That selection overlaps text you've already highlighted. " +
-//      "Clear it first to re-highlight."
-//    );
-//    return;
-// }
+  if (overlapsAnyMine(start, end)) {
+    window.getSelection()?.removeAllRanges();
+    toast(
+      "That selection overlaps text you've already highlighted. " +
+      "Clear it first to re-highlight."
+    );
+    return;
+ }
 
   const h = {
     start,
