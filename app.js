@@ -473,7 +473,7 @@ function addMineHighlight(h) {
 }
 
 function overlapsAnyMine(start, end) {
-/  return mineHighlights.some(h =>
+  return mineHighlights.some(h =>
     h && Number.isInteger(h.start) && Number.isInteger(h.end) &&
     (h.start < end && start < h.end)   // overlap test
   );
