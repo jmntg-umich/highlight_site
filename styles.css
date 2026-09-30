@@ -276,8 +276,8 @@ pre.text-layer{
 /* Heat highlight spans */
 .heatmark{
   display: inline;
-  padding: 0.08em 0.12em;
-  border-radius: 0.35em;
+  padding: 0.08em 0em;
+  border-radius: 0em;
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
   color: transparent;
